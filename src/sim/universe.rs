@@ -1,3 +1,5 @@
+use nalgebra::SVector;
+
 use crate::sim::particle::Particle;
 
 pub struct Universe<const D: usize> {
@@ -7,6 +9,23 @@ pub struct Universe<const D: usize> {
 impl<const D: usize> Universe<D> {
     pub fn new(particles: Vec<Particle<D>>) -> Self {
         Self { particles }
+    }
+
+    pub fn total_velocity(&self) -> SVector<f32, D> {
+        self.particles.iter().map(|p| p.vel).sum()
+    }
+
+    pub fn zero_total_velocity(mut self) -> Self {
+        let n = self.particles.len();
+        if n == 0 {
+            return self;
+        }
+
+        let total_vel = self.total_velocity();
+        self.particles
+            .iter_mut()
+            .for_each(|p| p.vel -= total_vel / (n as f32));
+        self
     }
 
     pub fn step(&mut self) {
@@ -24,7 +43,7 @@ impl<const D: usize> Universe<D> {
 
                 let r_vec = particle1.vector_to(particle2);
                 let r = r_vec.lp_norm(2);
-                let f12 = 1000.0 / r.powf(2.0);
+                let f12 = 100.0 / (r.powf(2.0) + (10.0 as f32).powf(2.0));
                 let f12_vec = f12 * r_vec / r;
 
                 particle1.force += f12_vec;
