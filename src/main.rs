@@ -1,55 +1,14 @@
 use macroquad::prelude::*;
-use n_body_simulation::sim::{particle::Particle, universe::Universe};
+use n_body_simulation::sim::universe::Universe;
 use nalgebra::vector;
 
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
-    let mut universe = Universe::new(vec![
-        Particle::new(
-            vector![125.0, -250.0],
-            Some(vector![
-                rand::gen_range(-0.1, 0.1),
-                rand::gen_range(-0.1, 0.1)
-            ]),
-        ),
-        Particle::new(
-            vector![-375.0, 250.0],
-            Some(vector![
-                rand::gen_range(-0.1, 0.1),
-                rand::gen_range(-0.1, 0.1)
-            ]),
-        ),
-        Particle::new(
-            vector![250.0, -375.0],
-            Some(vector![
-                rand::gen_range(-0.1, 0.1),
-                rand::gen_range(-0.1, 0.1)
-            ]),
-        ),
-        Particle::new(
-            vector![150.0, 400.0],
-            Some(vector![
-                rand::gen_range(-0.1, 0.1),
-                rand::gen_range(-0.1, 0.1)
-            ]),
-        ),
-        Particle::new(
-            vector![-350.0, 100.0],
-            Some(vector![
-                rand::gen_range(-0.1, 0.1),
-                rand::gen_range(-0.1, 0.1)
-            ]),
-        ),
-        Particle::new(
-            vector![100.0, -100.0],
-            Some(vector![
-                rand::gen_range(-0.1, 0.1),
-                rand::gen_range(-0.1, 0.1)
-            ]),
-        ),
-    ])
-    .zero_center_of_mass()
-    .zero_total_velocity();
+    let mut universe =
+        Universe::gaussian_nebula(250, vector![0.0, 0.0], vector![600.0, 400.0], None)
+            .zero_center_of_mass()
+            .zero_total_velocity()
+            .set_angular_momentum_xy_equally(100000.0);
 
     let mut camera = Camera2D {
         target: vec2(0.0, 0.0),
@@ -62,8 +21,6 @@ async fn main() {
     loop {
         clear_background(BLACK);
 
-        draw_circle(0.0, 0.0, 10.0, YELLOW);
-
         if first_frame {
             camera.target = vec2(0.0, 0.0);
             camera.zoom = vec2(zoom_factor / screen_width(), -zoom_factor / screen_height());
@@ -74,13 +31,15 @@ async fn main() {
 
         set_camera(&camera);
 
+        draw_circle(0.0, 0.0, 10.0, YELLOW);
         draw_universe(&universe);
 
         universe.step();
 
-        // set_default_camera();
+        set_default_camera();
 
         // draw UI elements here
+        draw_fps();
 
         next_frame().await
     }
