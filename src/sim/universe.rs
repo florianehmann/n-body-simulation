@@ -1,4 +1,6 @@
 use nalgebra::SVector;
+use rand::rng;
+use rand_distr::{Distribution, Normal};
 
 use crate::sim::particle::Particle;
 
@@ -9,6 +11,23 @@ pub struct Universe<const D: usize> {
 impl<const D: usize> Universe<D> {
     pub fn new(particles: Vec<Particle<D>>) -> Self {
         Self { particles }
+    }
+
+    pub fn gaussian_nebula(n: usize, mu: SVector<f32, D>, sigma: SVector<f32, D>) -> Self {
+        let mut rng = rng();
+        let normal = Normal::new(0.0, 1.0).unwrap();
+        let mut sample = SVector::<f32, D>::zeros();
+        let particles = (0..n)
+            .map(|_| {
+                for i in 0..D {
+                    sample[i] = normal.sample(&mut rng);
+                }
+                mu + sigma.component_mul(&sample)
+            })
+            .map(|pos| Particle::new(pos, None))
+            .collect();
+
+        Self::new(particles)
     }
 
     pub fn center_of_mass(&self) -> SVector<f32, D> {
@@ -106,5 +125,14 @@ mod tests {
         let zeroed_universe = universe.zero_center_of_mass();
         let com = zeroed_universe.center_of_mass();
         assert_relative_eq!(com, vector![0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_gaussian_nebula_particle_count() {
+        let mu = vector![0.0, 0.0];
+        let sigma = vector![1.0, 1.0];
+        let n = 100;
+        let universe = Universe::gaussian_nebula(n, mu, sigma);
+        assert_eq!(universe.particles.len(), n);
     }
 }
