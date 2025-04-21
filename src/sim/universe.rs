@@ -11,6 +11,23 @@ impl<const D: usize> Universe<D> {
         Self { particles }
     }
 
+    pub fn center_of_mass(&self) -> SVector<f32, D> {
+        self.particles.iter().map(|p| p.pos).sum()
+    }
+
+    pub fn zero_center_of_mass(mut self) -> Self {
+        let n = self.particles.len();
+        if n == 0 {
+            return self;
+        }
+
+        let com = self.center_of_mass();
+        self.particles
+            .iter_mut()
+            .for_each(|p| p.pos -= com / (n as f32));
+        self
+    }
+
     pub fn total_velocity(&self) -> SVector<f32, D> {
         self.particles.iter().map(|p| p.vel).sum()
     }
@@ -56,5 +73,38 @@ impl<const D: usize> Universe<D> {
             particle.vel += particle.force;
             particle.pos += particle.vel;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_relative_eq;
+    use nalgebra::vector;
+
+    use super::*;
+
+    #[test]
+    fn test_center_of_mass() {
+        let universe = Universe {
+            particles: vec![
+                Particle::new(vector![-1.0, -2.0], None),
+                Particle::new(vector![2.0, 4.0], None),
+            ],
+        };
+        let com = universe.center_of_mass();
+        assert_relative_eq!(com, vector![1.0, 2.0]);
+    }
+
+    #[test]
+    fn test_zero_center_of_mass() {
+        let universe = Universe {
+            particles: vec![
+                Particle::new(vector![-1.0, -2.0], None),
+                Particle::new(vector![2.0, 4.0], None),
+            ],
+        };
+        let zeroed_universe = universe.zero_center_of_mass();
+        let com = zeroed_universe.center_of_mass();
+        assert_relative_eq!(com, vector![0.0, 0.0]);
     }
 }

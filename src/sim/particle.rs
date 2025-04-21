@@ -7,11 +7,25 @@ pub struct Particle<const D: usize> {
 }
 
 impl<const D: usize> Particle<D> {
-    pub fn new(pos: SVector<f32, D>, vel: SVector<f32, D>) -> Self {
-        Self { pos, vel, force: SVector::<f32, D>::zeros() }
+    pub fn new(pos: SVector<f32, D>, vel: Option<SVector<f32, D>>) -> Self {
+        Self {
+            pos,
+            vel: vel.unwrap_or_else(|| SVector::<f32, D>::zeros()),
+            ..Default::default()
+        }
     }
 
     pub fn vector_to(&self, other: &Self) -> SVector<f32, D> {
         other.pos - self.pos
+    }
+}
+
+impl<const D: usize> Default for Particle<D> {
+    fn default() -> Self {
+        Self {
+            pos: SVector::<f32, D>::zeros(),
+            vel: SVector::<f32, D>::zeros(),
+            force: SVector::<f32, D>::zeros(),
+        }
     }
 }
