@@ -4,9 +4,11 @@ use nalgebra::vector;
 
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
-    let mut universe = Universe::gaussian_nebula(100, vector![0.0, 0.0], vector![300.0, 200.0])
-        .zero_center_of_mass()
-        .zero_total_velocity();
+    let mut universe =
+        Universe::gaussian_nebula(250, vector![0.0, 0.0], vector![600.0, 400.0], None)
+            .zero_center_of_mass()
+            .zero_total_velocity()
+            .set_angular_momentum_xy_equally(100000.0);
 
     let mut camera = Camera2D {
         target: vec2(0.0, 0.0),
