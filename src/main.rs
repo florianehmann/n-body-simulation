@@ -1,45 +1,123 @@
 use macroquad::prelude::*;
+use n_body_simulation::sim::{particle::Particle, universe::Universe};
+use nalgebra::vector;
 
-#[macroquad::main("N-Body")]
+#[macroquad::main("N-Body Simulation")]
 async fn main() {
-    let (w, h) = (screen_width(), screen_height());
-    let r = 5.0;
+    let mut universe = Universe::new(vec![
+        Particle::new(
+            vector![125.0, -250.0],
+            Some(vector![
+                rand::gen_range(-0.1, 0.1),
+                rand::gen_range(-0.1, 0.1)
+            ]),
+        ),
+        Particle::new(
+            vector![-375.0, 250.0],
+            Some(vector![
+                rand::gen_range(-0.1, 0.1),
+                rand::gen_range(-0.1, 0.1)
+            ]),
+        ),
+        Particle::new(
+            vector![250.0, -375.0],
+            Some(vector![
+                rand::gen_range(-0.1, 0.1),
+                rand::gen_range(-0.1, 0.1)
+            ]),
+        ),
+        Particle::new(
+            vector![150.0, 400.0],
+            Some(vector![
+                rand::gen_range(-0.1, 0.1),
+                rand::gen_range(-0.1, 0.1)
+            ]),
+        ),
+        Particle::new(
+            vector![-350.0, 100.0],
+            Some(vector![
+                rand::gen_range(-0.1, 0.1),
+                rand::gen_range(-0.1, 0.1)
+            ]),
+        ),
+        Particle::new(
+            vector![100.0, -100.0],
+            Some(vector![
+                rand::gen_range(-0.1, 0.1),
+                rand::gen_range(-0.1, 0.1)
+            ]),
+        ),
+    ])
+    .zero_center_of_mass()
+    .zero_total_velocity();
 
-    let mut x1: f32 = 0.25 * w;
-    let mut x2: f32 = 0.75 * w;
-    let mut y1: f32 = 0.5 * h;
-    let mut y2: f32 = 0.5 * h;
-
-    let mut v1_x = 0.0;
-    let mut v1_y = 3.0;
-    let mut v2_x = 0.0;
-    let mut v2_y = -1.0;
+    let mut camera = Camera2D {
+        target: vec2(0.0, 0.0),
+        ..Default::default()
+    };
+    set_camera(&camera);
+    let mut zoom_factor = 1.0;
+    let mut first_frame = true;
 
     loop {
         clear_background(BLACK);
 
-        // draw dots
-        draw_circle(x1, y1, r, WHITE);
-        draw_circle(x2, y2, r, WHITE);
+        draw_circle(0.0, 0.0, 10.0, YELLOW);
 
-        // determine forces
-        let r12_x = x2 - x1;
-        let r12_y = y2 - y1;
-        let r12 = (r12_x.powf(2.0) + r12_y.powf(2.0)).powf(0.5);
-        let f12 = 10000.0 / r12.powf(2.0);
-        let f12_x = f12 * r12_x / r12;
-        let f12_y = f12 * r12_y / r12;
+        if first_frame {
+            camera.target = vec2(0.0, 0.0);
+            camera.zoom = vec2(zoom_factor / screen_width(), -zoom_factor / screen_height());
+            first_frame = false;
+        } else {
+            zoom_and_pan(&mut camera, &mut zoom_factor);
+        }
 
-        // update dots
-        v1_x += f12_x;
-        v1_y += f12_y;
-        x1 += v1_x;
-        y1 += v1_y;
-        v2_x -= f12_x;
-        v2_y -= f12_y;
-        x2 += v2_x;
-        y2 += v2_y;
+        set_camera(&camera);
+
+        draw_universe(&universe);
+
+        universe.step();
+
+        // set_default_camera();
+
+        // draw UI elements here
 
         next_frame().await
+    }
+}
+
+fn zoom_and_pan(camera: &mut Camera2D, zoom_factor: &mut f32) {
+    // Save world pos under mouse *before* zoom
+    let mouse_screen = vec2(mouse_position().0, mouse_position().1);
+    let before_zoom = camera.screen_to_world(mouse_screen);
+
+    // Scroll to zoom
+    let scroll = mouse_wheel().1;
+    if scroll != 0.0 {
+        *zoom_factor *= 1.1_f32.powf(scroll); // exponential scale
+    }
+
+    camera.zoom = vec2(
+        *zoom_factor * 1.0 / screen_width(),
+        *zoom_factor * -1.0 / screen_height(),
+    );
+
+    // World pos under mouse *after* zoom
+    let after_zoom = camera.screen_to_world(mouse_screen);
+
+    // Adjust target to keep the mouse on the same world point
+    camera.target += before_zoom - after_zoom;
+
+    if is_mouse_button_down(MouseButton::Left) {
+        let delta = mouse_delta_position();
+        let zoom_inv = vec2(1.0 / camera.zoom.x, 1.0 / camera.zoom.y);
+        camera.target += vec2(delta.x, delta.y) * zoom_inv;
+    }
+}
+
+fn draw_universe<const D: usize>(universe: &Universe<D>) {
+    let r = 5.0;
+    for particle in &universe.particles {
+        draw_circle(particle.pos[0], particle.pos[1], r, WHITE);
     }
 }
