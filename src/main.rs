@@ -1,3 +1,5 @@
+use std::{thread::sleep, time::Duration};
+
 use macroquad::prelude::*;
 use n_body_simulation::sim::universe::Universe;
 use nalgebra::vector;
@@ -5,7 +7,7 @@ use nalgebra::vector;
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
     let mut universe =
-        Universe::gaussian_nebula(250, vector![0.0, 0.0], vector![600.0, 400.0], None)
+        Universe::gaussian_nebula(500, vector![0.0, 0.0], vector![600.0, 400.0], None)
             .zero_center_of_mass()
             .zero_total_velocity()
             .set_angular_momentum_xy_equally(100000.0);
@@ -17,6 +19,7 @@ async fn main() {
     set_camera(&camera);
     let mut zoom_factor = 1.0;
     let mut first_frame = true;
+    let mut waited = false;
 
     loop {
         clear_background(BLACK);
@@ -27,11 +30,15 @@ async fn main() {
             first_frame = false;
         } else {
             zoom_and_pan(&mut camera, &mut zoom_factor);
+            if !waited {
+                sleep(Duration::from_secs(1));
+                waited = true;
+            }
         }
 
         set_camera(&camera);
 
-        draw_circle(0.0, 0.0, 10.0, YELLOW);
+        // draw_circle(0.0, 0.0, 10.0, YELLOW);
         draw_universe(&universe);
 
         universe.step();
