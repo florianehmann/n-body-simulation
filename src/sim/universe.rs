@@ -131,7 +131,7 @@ impl<const D: usize> Universe<D> {
 
                 let r_vec = particle1.vector_to(particle2);
                 let r = r_vec.lp_norm(2);
-                let f12 = 100.0 / (r.powf(2.0) + (10.0 as f32).powf(2.0));
+                let f12 = 1.0e-4 / (r.powf(2.0) + (0.1 as f32).powf(2.0));
                 let f12_vec = f12 * r_vec / r;
 
                 particle1.force += f12_vec;

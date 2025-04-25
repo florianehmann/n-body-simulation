@@ -7,17 +7,17 @@ use nalgebra::vector;
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
     let mut universe =
-        Universe::gaussian_nebula(500, vector![0.0, 0.0], vector![600.0, 400.0], None)
+        Universe::gaussian_nebula(2000, vector![0.0, 0.0, 0.0], vector![10.0, 10.0, 1.0], None)
             .zero_center_of_mass()
             .zero_total_velocity()
-            .set_angular_momentum_xy_equally(100000.0);
+            .set_angular_momentum_xy_equally(10.0);
 
     let mut camera = Camera2D {
         target: vec2(0.0, 0.0),
         ..Default::default()
     };
     set_camera(&camera);
-    let mut zoom_factor = 1.0;
+    let mut zoom_factor = 15.0;
     let mut first_frame = true;
     let mut waited = false;
 
@@ -82,7 +82,7 @@ fn zoom_and_pan(camera: &mut Camera2D, zoom_factor: &mut f32) {
 }
 
 fn draw_universe<const D: usize>(universe: &Universe<D>) {
-    let r = 5.0;
+    let r = 0.1;
     for particle in &universe.particles {
         draw_circle(particle.pos[0], particle.pos[1], r, WHITE);
     }
