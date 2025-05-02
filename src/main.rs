@@ -1,3 +1,7 @@
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+#![deny(clippy::nursery)]
+
 use std::{thread::sleep, time::Duration};
 
 use macroquad::prelude::*;
@@ -49,7 +53,7 @@ async fn main() {
         // draw UI elements here
         draw_fps();
 
-        next_frame().await
+        next_frame().await;
     }
 }
 

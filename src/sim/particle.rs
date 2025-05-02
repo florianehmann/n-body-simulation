@@ -10,11 +10,12 @@ impl<const D: usize> Particle<D> {
     pub fn new(pos: SVector<f32, D>, vel: Option<SVector<f32, D>>) -> Self {
         Self {
             pos,
-            vel: vel.unwrap_or_else(|| SVector::<f32, D>::zeros()),
+            vel: vel.unwrap_or_else(SVector::<f32, D>::zeros),
             ..Default::default()
         }
     }
 
+    #[must_use]
     pub fn vector_to(&self, other: &Self) -> SVector<f32, D> {
         other.pos - self.pos
     }
