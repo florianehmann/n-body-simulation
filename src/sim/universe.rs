@@ -1,4 +1,4 @@
-use nalgebra::SVector;
+use nalgebra::{SVector, vector};
 use rand::SeedableRng;
 use rand_distr::{Distribution, Normal};
 
@@ -17,7 +17,7 @@ impl<const D: usize> Universe<D> {
         n: usize,
         mu: SVector<f32, D>,
         sigma: SVector<f32, D>,
-        seed: Option<u64>, // Optional seed
+        seed: Option<u64>,
     ) -> Self {
         let mut rng = match seed {
             Some(seed) => {
@@ -78,6 +78,34 @@ impl<const D: usize> Universe<D> {
         self
     }
 
+    pub fn set_random_velocity(
+        mut self,
+        mu: SVector<f32, D>,
+        sigma: SVector<f32, D>,
+        seed: Option<u64>,
+    ) -> Self {
+        let mut rng = match seed {
+            Some(seed) => {
+                let mut seed_array = [0u8; 32];
+                seed_array[..8].copy_from_slice(&seed.to_le_bytes());
+                rand::rngs::StdRng::from_seed(seed_array)
+            }
+            None => rand::rngs::StdRng::from_os_rng(),
+        };
+
+        let normal = Normal::new(0.0, 1.0).unwrap();
+        let mut sample = SVector::<f32, D>::zeros();
+        self.particles.iter_mut().for_each(|p| {
+            for i in 0..D {
+                sample[i] = normal.sample(&mut rng);
+            }
+            let dv = mu + sigma.component_mul(&sample);
+            p.vel += dv;
+        });
+
+        self
+    }
+
     fn angular_momentum_particle_xy(particle: &Particle<D>, com: SVector<f32, D>) -> f32 {
         let pos = particle.pos - com;
         pos[0] * particle.vel[1] - pos[1] * particle.vel[0]
@@ -111,6 +139,32 @@ impl<const D: usize> Universe<D> {
             let xy = p.pos[0] * p.pos[1];
             p.vel[0] = (-delta_l * p.pos[1] - p.vel[0] * xy + p.vel[1] * p.pos[1].powi(2)) / r;
             p.vel[1] = (delta_l * p.pos[0] - p.vel[1] * xy + p.vel[0] * p.pos[0].powi(2)) / r;
+        });
+
+        self
+    }
+
+    /// Sets a uniform angular velocity in the xy plane for all particles.
+    ///
+    /// # Arguments
+    ///
+    /// * `period` - The desired rotation period in simulation time.
+    ///
+    /// # Returns
+    ///
+    /// The updated system with modified particle velocities.
+    ///
+    /// # Note
+    ///
+    /// This method does not account for center-of-mass offset or pre-existing
+    /// angular momentum. It assumes the origin is the center of rotation and
+    /// adds the rotational component to the current velocities.
+    pub fn set_rotation_period(mut self, period: f32) -> Self {
+        let target_angular_velocity = 2.0 * std::f32::consts::PI / period;
+        self.particles.iter_mut().for_each(|p| {
+            let vel = vector![-p.pos[1], p.pos[0]] * target_angular_velocity;
+            p.vel[0] += vel[0];
+            p.vel[1] += vel[1];
         });
 
         self

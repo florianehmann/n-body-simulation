@@ -7,10 +7,11 @@ use nalgebra::vector;
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
     let mut universe =
-        Universe::gaussian_nebula(1000, vector![0.0, 0.0, 0.0], vector![13.4, 13.4, 1.3], None)
+        Universe::gaussian_nebula(2000, vector![0.0, 0.0, 0.0], vector![13.4, 13.4, 1.3], None)
             .zero_center_of_mass()
+            .set_random_velocity(vector![0.0, 0.0, 0.0], vector![0.02, 0.02, 0.002], None)
             .zero_total_velocity()
-            .set_angular_momentum_xy_equally(10.0);
+            .set_rotation_period(5000.0);
 
     let mut camera = Camera2D {
         target: vec2(0.0, 0.0),
