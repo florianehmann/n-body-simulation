@@ -1,5 +1,6 @@
 use nalgebra::SVector;
 
+#[derive(Clone)]
 pub struct Particle<const D: usize> {
     pub pos: SVector<f32, D>,
     pub vel: SVector<f32, D>,

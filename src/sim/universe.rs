@@ -4,6 +4,7 @@ use rand_distr::{Distribution, Normal};
 
 use crate::sim::particle::Particle;
 
+#[derive(Clone)]
 pub struct Universe<const D: usize> {
     pub particles: Vec<Particle<D>>,
 }
@@ -15,6 +16,7 @@ impl<const D: usize> Universe<D> {
     }
 
     #[must_use]
+    #[allow(clippy::missing_panics_doc)]
     pub fn gaussian_nebula(
         n: usize,
         mu: SVector<f32, D>,
@@ -27,7 +29,7 @@ impl<const D: usize> Universe<D> {
             rand::rngs::StdRng::from_seed(seed_array)
         });
 
-        let normal = Normal::new(0.0, 1.0).unwrap();
+        let normal = Normal::new(0.0, 1.0).expect("Sigma is hard-coded to be finite");
         let mut sample = SVector::<f32, D>::zeros();
 
         let particles = (0..n)
@@ -84,6 +86,7 @@ impl<const D: usize> Universe<D> {
     }
 
     #[must_use]
+    #[allow(clippy::missing_panics_doc)]
     pub fn set_random_velocity(
         mut self,
         mu: SVector<f32, D>,
@@ -96,7 +99,7 @@ impl<const D: usize> Universe<D> {
             rand::rngs::StdRng::from_seed(seed_array)
         });
 
-        let normal = Normal::new(0.0, 1.0).unwrap();
+        let normal = Normal::new(0.0, 1.0).expect("Sigma is hard-coded to be finite");
         let mut sample = SVector::<f32, D>::zeros();
         self.particles.iter_mut().for_each(|p| {
             for i in 0..D {
@@ -197,10 +200,14 @@ impl<const D: usize> Universe<D> {
                 let particle1 = &mut left[i];
                 let particle2 = &mut right[0];
 
-                let r_vec = particle1.vector_to(particle2);
-                let r = r_vec.lp_norm(2);
-                let f12 = 1.0e-4 / r.mul_add(r, (0.1_f32).powi(2));
-                let f12_vec = f12 * r_vec / r;
+                let r_vec = particle2.pos - particle1.pos;
+
+                let r_squared = r_vec.norm_squared();
+                let softened = r_squared + 0.01; // (r^2 + epsilon^2)
+                let inv_r = 1.0 / softened.sqrt();
+
+                let f12 = 1.0e-4 * inv_r * inv_r;
+                let f12_vec = f12 * r_vec * inv_r;
 
                 particle1.force += f12_vec;
                 particle2.force -= f12_vec;
