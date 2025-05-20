@@ -1,4 +1,4 @@
-use nalgebra::SVector;
+use nalgebra::{SVector, vector};
 use rand::SeedableRng;
 use rand_distr::{Distribution, Normal};
 
@@ -9,24 +9,23 @@ pub struct Universe<const D: usize> {
 }
 
 impl<const D: usize> Universe<D> {
-    pub fn new(particles: Vec<Particle<D>>) -> Self {
+    #[must_use]
+    pub const fn new(particles: Vec<Particle<D>>) -> Self {
         Self { particles }
     }
 
+    #[must_use]
     pub fn gaussian_nebula(
         n: usize,
         mu: SVector<f32, D>,
         sigma: SVector<f32, D>,
-        seed: Option<u64>, // Optional seed
+        seed: Option<u64>,
     ) -> Self {
-        let mut rng = match seed {
-            Some(seed) => {
-                let mut seed_array = [0u8; 32];
-                seed_array[..8].copy_from_slice(&seed.to_le_bytes());
-                rand::rngs::StdRng::from_seed(seed_array)
-            }
-            None => rand::rngs::StdRng::from_os_rng(),
-        };
+        let mut rng = seed.map_or_else(rand::rngs::StdRng::from_os_rng, |seed| {
+            let mut seed_array = [0u8; 32];
+            seed_array[..8].copy_from_slice(&seed.to_le_bytes());
+            rand::rngs::StdRng::from_seed(seed_array)
+        });
 
         let normal = Normal::new(0.0, 1.0).unwrap();
         let mut sample = SVector::<f32, D>::zeros();
@@ -44,10 +43,12 @@ impl<const D: usize> Universe<D> {
         Self::new(particles)
     }
 
+    #[must_use]
     pub fn center_of_mass(&self) -> SVector<f32, D> {
         self.particles.iter().map(|p| p.pos).sum()
     }
 
+    #[must_use]
     pub fn zero_center_of_mass(mut self) -> Self {
         let n = self.particles.len();
         if n == 0 {
@@ -55,16 +56,19 @@ impl<const D: usize> Universe<D> {
         }
 
         let com = self.center_of_mass();
+        #[allow(clippy::cast_precision_loss)]
         self.particles
             .iter_mut()
             .for_each(|p| p.pos -= com / (n as f32));
         self
     }
 
+    #[must_use]
     pub fn total_velocity(&self) -> SVector<f32, D> {
         self.particles.iter().map(|p| p.vel).sum()
     }
 
+    #[must_use]
     pub fn zero_total_velocity(mut self) -> Self {
         let n = self.particles.len();
         if n == 0 {
@@ -72,15 +76,45 @@ impl<const D: usize> Universe<D> {
         }
 
         let total_vel = self.total_velocity();
+        #[allow(clippy::cast_precision_loss)]
         self.particles
             .iter_mut()
             .for_each(|p| p.vel -= total_vel / (n as f32));
         self
     }
 
+    #[must_use]
+    pub fn set_random_velocity(
+        mut self,
+        mu: SVector<f32, D>,
+        sigma: SVector<f32, D>,
+        seed: Option<u64>,
+    ) -> Self {
+        let mut rng = seed.map_or_else(rand::rngs::StdRng::from_os_rng, |seed| {
+            let mut seed_array = [0u8; 32];
+            seed_array[..8].copy_from_slice(&seed.to_le_bytes());
+            rand::rngs::StdRng::from_seed(seed_array)
+        });
+
+        let normal = Normal::new(0.0, 1.0).unwrap();
+        let mut sample = SVector::<f32, D>::zeros();
+        self.particles.iter_mut().for_each(|p| {
+            for i in 0..D {
+                sample[i] = normal.sample(&mut rng);
+            }
+            let dv = mu + sigma.component_mul(&sample);
+            p.vel += dv;
+        });
+
+        self
+    }
+
     fn angular_momentum_particle_xy(particle: &Particle<D>, com: SVector<f32, D>) -> f32 {
         let pos = particle.pos - com;
-        pos[0] * particle.vel[1] - pos[1] * particle.vel[0]
+        #[allow(clippy::suboptimal_flops)]
+        {
+            pos[0] * particle.vel[1] - pos[1] * particle.vel[0]
+        }
     }
 
     /// Returns the total angular momentum of the universe in the xy plane.
@@ -88,14 +122,16 @@ impl<const D: usize> Universe<D> {
     /// # Returns
     ///
     /// Total angular momentum in the xy plane of the universe.
+    #[must_use]
     pub fn total_angular_momentum_xy(&self) -> f32 {
         let com = self.center_of_mass();
         self.particles
             .iter()
-            .map(|p| Self::angular_momentum_particle_xy(&p, com))
+            .map(|p| Self::angular_momentum_particle_xy(p, com))
             .sum::<f32>()
     }
 
+    #[must_use]
     pub fn set_angular_momentum_xy_equally(mut self, angular_momentum: f32) -> Self {
         let n = self.particles.len();
         if n == 0 {
@@ -103,14 +139,46 @@ impl<const D: usize> Universe<D> {
         }
 
         let com = self.center_of_mass();
+        #[allow(clippy::cast_precision_loss)]
         let target_l_avg = angular_momentum / (n as f32);
         self.particles.iter_mut().for_each(|p| {
-            let current_l = Self::angular_momentum_particle_xy(&p, com);
+            let current_l = Self::angular_momentum_particle_xy(p, com);
             let delta_l = target_l_avg - current_l;
+            #[allow(clippy::suboptimal_flops)]
             let r = p.pos[0].powi(2) + p.pos[1].powi(2);
             let xy = p.pos[0] * p.pos[1];
-            p.vel[0] = (-delta_l * p.pos[1] - p.vel[0] * xy + p.vel[1] * p.pos[1].powi(2)) / r;
-            p.vel[1] = (delta_l * p.pos[0] - p.vel[1] * xy + p.vel[0] * p.pos[0].powi(2)) / r;
+            #[allow(clippy::suboptimal_flops)]
+            {
+                p.vel[0] = (-delta_l * p.pos[1] - p.vel[0] * xy + p.vel[1] * p.pos[1].powi(2)) / r;
+                p.vel[1] = (delta_l * p.pos[0] - p.vel[1] * xy + p.vel[0] * p.pos[0].powi(2)) / r;
+            }
+        });
+
+        self
+    }
+
+    /// Sets a uniform angular velocity in the xy plane for all particles.
+    ///
+    /// # Arguments
+    ///
+    /// * `period` - The desired rotation period in simulation time.
+    ///
+    /// # Returns
+    ///
+    /// The updated system with modified particle velocities.
+    ///
+    /// # Note
+    ///
+    /// This method does not account for center-of-mass offset or pre-existing
+    /// angular momentum. It assumes the origin is the center of rotation and
+    /// adds the rotational component to the current velocities.
+    #[must_use]
+    pub fn set_rotation_period(mut self, period: f32) -> Self {
+        let target_angular_velocity = 2.0 * std::f32::consts::PI / period;
+        self.particles.iter_mut().for_each(|p| {
+            let vel = vector![-p.pos[1], p.pos[0]] * target_angular_velocity;
+            p.vel[0] += vel[0];
+            p.vel[1] += vel[1];
         });
 
         self
@@ -131,7 +199,7 @@ impl<const D: usize> Universe<D> {
 
                 let r_vec = particle1.vector_to(particle2);
                 let r = r_vec.lp_norm(2);
-                let f12 = 100.0 / (r.powf(2.0) + (10.0 as f32).powf(2.0));
+                let f12 = 1.0e-4 / r.mul_add(r, (0.1_f32).powi(2));
                 let f12_vec = f12 * r_vec / r;
 
                 particle1.force += f12_vec;
