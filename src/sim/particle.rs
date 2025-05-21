@@ -1,33 +1,33 @@
 use nalgebra::SVector;
 
 #[derive(Clone)]
-pub struct Particle<const D: usize> {
-    pub pos: SVector<f32, D>,
-    pub vel: SVector<f32, D>,
-    pub force: SVector<f32, D>,
+pub struct Particle {
+    pub pos: SVector<f32, 3>,
+    pub vel: SVector<f32, 3>,
+    pub force: SVector<f32, 3>,
 }
 
-impl<const D: usize> Particle<D> {
-    pub fn new(pos: SVector<f32, D>, vel: Option<SVector<f32, D>>) -> Self {
+impl Particle {
+    pub fn new(pos: SVector<f32, 3>, vel: Option<SVector<f32, 3>>) -> Self {
         Self {
             pos,
-            vel: vel.unwrap_or_else(SVector::<f32, D>::zeros),
+            vel: vel.unwrap_or_else(SVector::<f32, 3>::zeros),
             ..Default::default()
         }
     }
 
     #[must_use]
-    pub fn vector_to(&self, other: &Self) -> SVector<f32, D> {
+    pub fn vector_to(&self, other: &Self) -> SVector<f32, 3> {
         other.pos - self.pos
     }
 }
 
-impl<const D: usize> Default for Particle<D> {
+impl Default for Particle {
     fn default() -> Self {
         Self {
-            pos: SVector::<f32, D>::zeros(),
-            vel: SVector::<f32, D>::zeros(),
-            force: SVector::<f32, D>::zeros(),
+            pos: SVector::<f32, 3>::zeros(),
+            vel: SVector::<f32, 3>::zeros(),
+            force: SVector::<f32, 3>::zeros(),
         }
     }
 }
