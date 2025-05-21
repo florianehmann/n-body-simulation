@@ -16,18 +16,12 @@ const MAX_ACCUMULATOR_TIME: f32 = 0.1;
 
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
-    // Milky Way
-    // let universe =
-    //     Universe::gaussian_nebula(5000, vector![0.0, 0.0, 0.0], vector![13.4, 13.4, 1.3], None)
-    //         .zero_center_of_mass()
-    //         .set_random_velocity(vector![0.0, 0.0, 0.0], vector![0.02, 0.02, 0.002], None)
-    //         .zero_total_velocity()
-    //         .set_rotation_period(10000.0);
     let universe =
-        Universe::gaussian_nebula(2000, vector![0.0, 0.0, 0.0], vector![10.0, 10.0, 1.0], None)
+        Universe::gaussian_nebula(5000, vector![0.0, 0.0, 0.0], vector![13.4, 13.4, 1.3], None)
             .zero_center_of_mass()
+            .set_random_velocity(vector![0.0, 0.0, 0.0], vector![0.02, 0.02, 0.002], None)
             .zero_total_velocity()
-            .set_rotation_period(1000.0);
+            .set_rotation_period(1500.0);
     let render_buffer = Arc::new(Mutex::new(universe));
     let sim_render_buffer = Arc::clone(&render_buffer);
     thread::spawn(move || {
@@ -138,9 +132,9 @@ fn zoom_and_pan(camera: &mut Camera2D, zoom_factor: &mut f32) {
     }
 }
 
-fn draw_universe(universe: &Universe) {
+fn draw_universe<const D: usize>(universe: &Universe<D>) {
     let r = 0.1;
-    for i in 0..universe.x.len() {
-        draw_circle(universe.x[i], universe.y[i], r, WHITE);
+    for particle in &universe.particles {
+        draw_circle(particle.pos[0], particle.pos[1], r, WHITE);
     }
 }
