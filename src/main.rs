@@ -132,7 +132,7 @@ fn zoom_and_pan(camera: &mut Camera2D, zoom_factor: &mut f32) {
     }
 }
 
-fn draw_universe<const D: usize>(universe: &Universe<D>) {
+fn draw_universe(universe: &Universe) {
     let r = 0.1;
     for particle in &universe.particles {
         draw_circle(particle.pos[0], particle.pos[1], r, WHITE);

@@ -34,7 +34,7 @@ impl Universe {
 
         let particles = (0..n)
             .map(|_| {
-                for i in 0..D {
+                for i in 0..3 {
                     sample[i] = normal.sample(&mut rng);
                 }
                 mu + sigma.component_mul(&sample)
@@ -102,7 +102,7 @@ impl Universe {
         let normal = Normal::new(0.0, 1.0).expect("Sigma is hard-coded to be finite");
         let mut sample = SVector::<f32, 3>::zeros();
         self.particles.iter_mut().for_each(|p| {
-            for i in 0..D {
+            for i in 0..3 {
                 sample[i] = normal.sample(&mut rng);
             }
             let dv = mu + sigma.component_mul(&sample);
@@ -112,7 +112,7 @@ impl Universe {
         self
     }
 
-    fn angular_momentum_particle_xy(particle: &Particle<3>, com: SVector<f32, 3>) -> f32 {
+    fn angular_momentum_particle_xy(particle: &Particle, com: SVector<f32, 3>) -> f32 {
         let pos = particle.pos - com;
         #[allow(clippy::suboptimal_flops)]
         {
