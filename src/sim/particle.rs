@@ -1,6 +1,6 @@
 use nalgebra::SVector;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Particle {
     pub pos: SVector<f32, 3>,
     pub vel: SVector<f32, 3>,

@@ -47,7 +47,10 @@ impl Universe {
 
     #[must_use]
     pub fn center_of_mass(&self) -> SVector<f32, 3> {
-        self.particles.iter().map(|p| p.pos).sum()
+        #[allow(clippy::cast_precision_loss)]
+        let n = self.particles.len() as f32;
+        let position_sum: SVector<f32, 3> = self.particles.iter().map(|p| p.pos).sum();
+        position_sum / n
     }
 
     #[must_use]
@@ -58,10 +61,7 @@ impl Universe {
         }
 
         let com = self.center_of_mass();
-        #[allow(clippy::cast_precision_loss)]
-        self.particles
-            .iter_mut()
-            .for_each(|p| p.pos -= com / (n as f32));
+        self.particles.iter_mut().for_each(|p| p.pos -= com);
         self
     }
 
@@ -212,7 +212,7 @@ mod tests {
             ],
         };
         let com = universe.center_of_mass();
-        assert_relative_eq!(com, vector![1.0, 2.0, 0.0]);
+        assert_relative_eq!(com, vector![0.5, 1.0, 0.0]);
     }
 
     #[test]
