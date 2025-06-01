@@ -2,12 +2,12 @@ use nalgebra::{SVector, vector};
 
 use super::particle::Particle;
 
-struct SubtreeAggregate {
-    center_of_mass: SVector<f32, 3>,
-    total_mass: f32,
+pub struct SubtreeAggregate {
+    pub center_of_mass: SVector<f32, 3>,
+    pub total_mass: f32,
 }
 
-struct OctreeNode {
+pub struct OctreeNode {
     center: SVector<f32, 3>,
     children: Option<[Box<OctreeNode>; 8]>,
     half_width: f32,
@@ -16,6 +16,7 @@ struct OctreeNode {
 }
 
 impl OctreeNode {
+    #[must_use]
     pub const fn new(center: SVector<f32, 3>, half_width: f32) -> Self {
         Self {
             center,
@@ -26,7 +27,8 @@ impl OctreeNode {
         }
     }
 
-    pub fn insert(&mut self, particle_index: usize, particles: &Vec<Particle>) {
+    #[allow(clippy::missing_panics_doc)]
+    pub fn insert(&mut self, particle_index: usize, particles: &[Particle]) {
         if self.particle_index.is_none() && self.children.is_none() {
             self.particle_index = Some(particle_index);
             return;
@@ -48,10 +50,31 @@ impl OctreeNode {
         }
     }
 
-    pub fn insert_particles(&mut self, particles: &Vec<Particle>) {
+    pub fn insert_particles(&mut self, particles: &[Particle]) {
         particles.iter().enumerate().for_each(|(idx, _)| {
             self.insert(idx, particles);
         });
+    }
+
+    #[must_use]
+    pub fn from_particles(particles: &[Particle]) -> Self {
+        let (mut min, mut max) = (particles[0].pos, particles[0].pos);
+        for p in particles.iter().skip(1) {
+            for i in 0..3 {
+                if p.pos[i] < min[i] {
+                    min[i] = p.pos[i];
+                }
+                if p.pos[i] > max[i] {
+                    max[i] = p.pos[i];
+                }
+            }
+        }
+        let center = (min + max) / 2.0;
+        let half_width = ((max - min).amax()) / 2.0 + 1e-5;
+        let mut tree = Self::new(center, half_width);
+        tree.insert_particles(particles);
+        tree.compute_aggregates(particles);
+        tree
     }
 
     pub fn subdivide(&mut self) {
@@ -73,6 +96,7 @@ impl OctreeNode {
         self.children = Some(children);
     }
 
+    #[must_use]
     pub fn get_child_index(&self, position: SVector<f32, 3>) -> usize {
         let mut index = 0;
         if position[0] >= self.center[0] {
@@ -96,7 +120,8 @@ impl OctreeNode {
         }
     }
 
-    pub fn compute_aggregates(&mut self, particles: &Vec<Particle>) {
+    #[allow(clippy::missing_panics_doc)]
+    pub fn compute_aggregates(&mut self, particles: &[Particle]) {
         if let Some(children) = &mut self.children {
             let mut center_of_mass_term = SVector::<f32, 3>::zeros();
             let mut total_mass: f32 = 0.0;
@@ -132,7 +157,35 @@ impl OctreeNode {
         }
     }
 
-    #[allow(dead_code)]
+    /// # Panics
+    /// If the tree has not been aggregated by previously calling `compute_aggregates`.
+    /// This happens automatically if the tree is constructed by `from_particles`.
+    pub fn for_each_relevant_aggregate<F>(
+        &self,
+        position: SVector<f32, 3>,
+        theta_mac: f32,
+        func: &mut F,
+    ) where
+        F: FnMut(&SubtreeAggregate),
+    {
+        let r = (position - self.center).norm();
+        let theta = 2.0 * self.half_width / r;
+        if theta < theta_mac {
+            func(
+                self.aggregate
+                    .as_ref()
+                    .expect("Tree needs to be aggregated"),
+            );
+            return;
+        }
+
+        if let Some(children) = &self.children {
+            for child in children {
+                child.for_each_relevant_aggregate(position, theta_mac, func);
+            }
+        }
+    }
+
     pub fn print(&self, depth: usize) {
         let indent = " ".repeat(4 * depth);
 
@@ -174,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_init() {
-        OctreeNode::new(SVector::zeros(), 1.0);
+        let _ = OctreeNode::new(SVector::zeros(), 1.0);
     }
 
     #[test]

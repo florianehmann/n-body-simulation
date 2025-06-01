@@ -2,7 +2,10 @@ use nalgebra::{SVector, vector};
 use rand::SeedableRng;
 use rand_distr::{Distribution, Normal};
 
+use crate::sim::barnes_hut::OctreeNode;
 use crate::sim::particle::Particle;
+
+use super::barnes_hut::SubtreeAggregate;
 
 #[derive(Clone)]
 pub struct Universe {
@@ -161,7 +164,7 @@ impl Universe {
         self
     }
 
-    pub fn step(&mut self) {
+    pub fn step_direct(&mut self) {
         // reset forces
         for particle in &mut self.particles {
             particle.force *= 0.0;
@@ -186,6 +189,42 @@ impl Universe {
                 particle1.force += f12_vec;
                 particle2.force -= f12_vec;
             }
+        }
+
+        // update velocities and positions
+        for particle in &mut self.particles {
+            particle.vel += particle.force;
+            particle.pos += particle.vel;
+        }
+    }
+
+    pub fn step(&mut self) {
+        // reset forces
+        for particle in &mut self.particles {
+            particle.force *= 0.0;
+        }
+
+        // determine Barnes-Hut octree
+        let tree = OctreeNode::from_particles(&self.particles);
+
+        // determine approximate forces
+        for particle in &mut self.particles {
+            let mut calls: usize = 0;
+            let mut f = |agg: &SubtreeAggregate| {
+                calls += 1;
+                let r_vec = agg.center_of_mass - particle.pos;
+
+                let r_squared = r_vec.norm_squared();
+                let softened = r_squared + 0.01; // (r^2 + epsilon^2)
+                let inv_r = 1.0 / softened.sqrt();
+
+                let f12 = 1.0e-6 * agg.total_mass * inv_r * inv_r;
+                let f12_vec = f12 * r_vec * inv_r;
+
+                particle.force += f12_vec;
+            };
+            tree.for_each_relevant_aggregate(particle.pos, 1.0, &mut f);
+            // println!("Called closure {calls} times.");
         }
 
         // update velocities and positions
