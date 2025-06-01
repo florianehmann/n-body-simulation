@@ -219,6 +219,7 @@ impl OctreeNode {
 
 #[cfg(test)]
 mod tests {
+    use approx::assert_relative_eq;
     use rand::{Rng, SeedableRng};
 
     use crate::sim::universe::Universe;
@@ -298,7 +299,7 @@ mod tests {
 
         #[allow(clippy::cast_precision_loss)]
         let n = universe.particles.len() as f32;
-        assert!(tree_aggregate.total_mass - n < 1e-5);
+        assert_relative_eq!(tree_aggregate.total_mass, n);
     }
 
     #[test]
@@ -307,10 +308,6 @@ mod tests {
         let universe = Universe { particles };
         tree.compute_aggregates(&universe.particles);
         let tree_aggregate = tree.aggregate.expect("Aggregated tree");
-
-        let diff = tree_aggregate.center_of_mass - universe.center_of_mass();
-        for i in 0..3 {
-            assert!(diff[i].abs() < 1e-5, "Component {} differs: {}", i, diff[i]);
-        }
+        assert_relative_eq!(tree_aggregate.center_of_mass, universe.center_of_mass());
     }
 }
