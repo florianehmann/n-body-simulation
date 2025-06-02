@@ -1,3 +1,33 @@
+//! Barnes-Hut Octree implementation for efficient n-body force computation.
+//!
+//! This module provides the [`OctreeNode`] structure and related algorithms for spatial
+//! partitioning and hierarchical force approximation in gravitational n-body simulations.
+//! The Barnes-Hut algorithm reduces the computational complexity of force calculations
+//! from O(N²) to O(N log N) by grouping distant particles and approximating their collective
+//! influence using multipole expansions.
+//!
+//! # Features
+//! - Construction of an octree from a set of particles
+//! - Efficient insertion and subdivision logic
+//! - Recursive aggregation of mass and center of mass for each subtree
+//! - Fast force evaluation using the multipole acceptance criterion (MAC)
+//! - Debugging utilities for tree inspection
+//!
+//! # Usage
+//! This module is intended to be used as part of the simulation core. The octree can be
+//! constructed from a list of particles and then used to efficiently compute gravitational
+//! forces using the Barnes-Hut approximation.
+//!
+//! # Example
+//! ```rust
+//! use n_body_simulation::sim::barnes_hut::OctreeNode;
+//! use n_body_simulation::sim::particle::Particle;
+//! use nalgebra::vector;
+//!
+//! let particles = vec![Particle::new(vector![0.0, 0.0, 0.0], None)];
+//! let tree = OctreeNode::from_particles(&particles);
+//! ```
+
 use nalgebra::{SVector, vector};
 
 use super::particle::Particle;
@@ -15,7 +45,26 @@ pub struct OctreeNode {
     aggregate: Option<SubtreeAggregate>,
 }
 
+/// Represents a node in an octree structure.
+///
+/// Each `OctreeNode` can either be a leaf node containing a single particle or an internal node
+/// with up to eight children, each representing a subregion of space. The node stores its spatial
+/// center, half-width (defining its cubic bounds), and optionally the index of a particle if it is
+/// leaf. Internal nodes aggregate information about their subtree, such as the total mass and
+/// center of mass, to enable efficient force calculations.
+///
+/// # Usage
+/// This struct is intended for use in spatial partitioning and efficient force computation in
+/// n-body simulations using the Barnes-Hut approximation.
 impl OctreeNode {
+    /// Creates a new `OctreeNode` with the specified center and half-width.
+    ///
+    /// # Parameters
+    /// - `center`: The center position of the node in 3D space.
+    /// - `half_width`: Half the width of the node's bounding cube.
+    ///
+    /// # Returns
+    /// A new `OctreeNode` with no children, no particle, and no aggregate data.
     #[must_use]
     pub const fn new(center: SVector<f32, 3>, half_width: f32) -> Self {
         Self {
@@ -27,7 +76,23 @@ impl OctreeNode {
         }
     }
 
-    #[allow(clippy::missing_panics_doc)]
+    /// Inserts a particle into the octree node.
+    ///
+    /// This method places the particle with the given `particle_index` into the octree,
+    /// subdividing the node if necessary. If the node is a leaf and empty, the particle
+    /// is stored directly. If the node already contains a particle and has no children,
+    /// it is subdivided, and both the existing and new particles are reinserted into the
+    /// appropriate child nodes. If the node has children, the particle is recursively
+    /// inserted into the correct child node based on its position.
+    ///
+    /// # Parameters
+    /// - `particle_index`: The index of the particle to insert.
+    /// - `particles`: A slice containing all particles, used to access the position of the
+    ///   particle.
+    ///
+    /// # Panics
+    /// Panics if the node is expected to contain a particle but does not. This should not occur
+    /// under normal operation, as the logic ensures a particle is present before subdivision.
     pub fn insert(&mut self, particle_index: usize, particles: &[Particle]) {
         if self.particle_index.is_none() && self.children.is_none() {
             self.particle_index = Some(particle_index);
@@ -50,12 +115,32 @@ impl OctreeNode {
         }
     }
 
+    /// Inserts all particles from the given slice into the octree.
+    ///
+    /// This method iterates over the provided slice of [`Particle`] instances and inserts
+    /// each particle into the octree by calling [`Self::insert`] for each index. This is
+    /// typically used to populate the octree with all particles at construction time.
+    ///
+    /// # Parameters
+    /// - `particles`: A slice containing all particles to be inserted into the octree.
     pub fn insert_particles(&mut self, particles: &[Particle]) {
         particles.iter().enumerate().for_each(|(idx, _)| {
             self.insert(idx, particles);
         });
     }
 
+    /// Constructs an `OctreeNode` from a slice of particles.
+    ///
+    /// This method determines the axis-aligned bounding box that contains all particles,
+    /// then creates a root node centered in this box with a half-width large enough to
+    /// encompass all particles. It inserts all particles into the tree and computes
+    /// aggregate properties (center of mass and total mass) for each subtree.
+    ///
+    /// # Parameters
+    /// - `particles`: A slice of [`Particle`]s to be inserted into the octree.
+    ///
+    /// # Returns
+    /// An `OctreeNode` representing the root of the constructed octree.
     #[must_use]
     pub fn from_particles(particles: &[Particle]) -> Self {
         let (mut min, mut max) = (particles[0].pos, particles[0].pos);
@@ -77,6 +162,16 @@ impl OctreeNode {
         tree
     }
 
+    /// Subdivides the current octree node into eight child nodes.
+    ///
+    /// This method splits the cubic region represented by the current node into eight
+    /// equally sized subcubes (octants), each represented by a new child node. The children
+    /// are positioned such that together they fully cover the original node's volume.
+    /// Each child node is centered at the appropriate offset from the parent node's center,
+    /// and has half the parent's half-width.
+    ///
+    /// After calling this method, the `children` field will contain an array of eight
+    /// boxed `OctreeNode` instances, each representing one octant of the parent node's space.
     pub fn subdivide(&mut self) {
         let half_width = self.half_width / 2.0;
         let mut child_idx = 0;
@@ -96,6 +191,16 @@ impl OctreeNode {
         self.children = Some(children);
     }
 
+    /// Returns the index of the child octant that contains the given position.
+    ///
+    /// This method determines which of the eight child nodes (octants) a given position
+    /// belongs to, based on its coordinates relative to the center of this node.
+    ///
+    /// # Parameters
+    /// - `position`: The 3D position to locate within the octree node.
+    ///
+    /// # Returns
+    /// An integer in the range 0..8 indicating the child index (octant).
     #[must_use]
     pub fn get_child_index(&self, position: SVector<f32, 3>) -> usize {
         let mut index = 0;
@@ -111,6 +216,13 @@ impl OctreeNode {
         index
     }
 
+    /// Recursively applies a function to this node and all descendant nodes.
+    ///
+    /// This method traverses the octree in depth-first order, calling the provided
+    /// function `func` on each node.
+    ///
+    /// # Parameters
+    /// - `func`: A mutable reference to a function or closure to apply to each node.
     pub fn for_each_dyn(&self, func: &mut dyn FnMut(&Self)) {
         func(self);
         if let Some(children) = &self.children {
@@ -120,7 +232,18 @@ impl OctreeNode {
         }
     }
 
-    #[allow(clippy::missing_panics_doc)]
+    /// Computes and stores the aggregate properties (center of mass and total mass) for this node.
+    ///
+    /// This method recursively computes the total mass and center of mass for each subtree,
+    /// storing the result in the `aggregate` field. For leaf nodes, the aggregate is based
+    /// on the contained particle. For internal nodes, the aggregate is computed from the
+    /// aggregates of all children.
+    ///
+    /// # Parameters
+    /// - `particles`: A slice of all particles, used to access positions and masses.
+    ///
+    /// # Panics
+    /// Panics if a child node does not have its aggregate computed.
     pub fn compute_aggregates(&mut self, particles: &[Particle]) {
         if let Some(children) = &mut self.children {
             let mut center_of_mass_term = SVector::<f32, 3>::zeros();
@@ -157,9 +280,24 @@ impl OctreeNode {
         }
     }
 
+    /// Applies a function to all relevant subtree aggregates for a given position using the
+    /// Barnes-Hut criterion.
+    ///
+    /// This method traverses the octree and, for each node, decides whether to treat the node as a
+    /// single aggregate (if the opening angle criterion `theta_mac` is satisfied) or to recurse
+    /// into its children. The provided function `func` is called for each relevant aggregate.
+    ///
+    /// # Parameters
+    /// - `position`: The position from which the opening angle is evaluated (e.g., the position of
+    ///   the particle being updated).
+    /// - `theta_mac`: The maximum allowed opening angle for the multipole acceptance criterion
+    ///   (MAC).
+    /// - `func`: A mutable reference to a function or closure to apply to each relevant aggregate.
+    ///
     /// # Panics
-    /// If the tree has not been aggregated by previously calling `compute_aggregates`.
-    /// This happens automatically if the tree is constructed by `from_particles`.
+    /// Panics if the tree has not been aggregated by previously calling
+    /// [`Self::compute_aggregates`].
+    /// This happens automatically if the tree is constructed by [`Self::from_particles`].
     pub fn for_each_relevant_aggregate<F>(
         &self,
         position: SVector<f32, 3>,
@@ -186,6 +324,15 @@ impl OctreeNode {
         }
     }
 
+    /// Recursively prints the structure of the octree for debugging purposes.
+    ///
+    /// This method prints information about the current node, including whether it holds a
+    /// particle, whether it has children, and its spatial bounds. It then recursively prints all
+    /// child nodes, increasing the indentation for each level of depth. The method skips over empty
+    /// leaf nodes.
+    ///
+    /// # Parameters
+    /// - `depth`: The current depth in the tree, used to control indentation.
     pub fn print(&self, depth: usize) {
         let indent = " ".repeat(4 * depth);
 

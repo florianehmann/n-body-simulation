@@ -1,3 +1,29 @@
+//! Universe abstraction for n-body simulations.
+//!
+//! This module defines the [`Universe`] struct, which manages a collection of particles and
+//! provides methods for initializing, analyzing, and evolving an n-body system under Newtonian
+//! gravity.
+//!
+//! # Features
+//! - Construction of universes from custom or randomly generated particle distributions
+//! - Utilities for centering, velocity normalization, and angular momentum control
+//! - Direct O(N²) and Barnes-Hut O(N log N) simulation steps
+//! - Methods for computing physical properties such as center of mass and angular momentum
+//!
+//! # Example
+//! ```rust
+//! use n_body_simulation::sim::universe::Universe;
+//! use nalgebra::vector;
+//!
+//! // Create a universe with 100 particles in a Gaussian nebula
+//! let universe = Universe::gaussian_nebula(
+//!     100,
+//!     vector![0.0, 0.0, 0.0],
+//!     vector![1.0, 1.0, 1.0], None
+//! );
+//! ```
+//!
+
 use nalgebra::{SVector, vector};
 use rand::SeedableRng;
 use rand_distr::{Distribution, Normal};
@@ -13,13 +39,38 @@ pub struct Universe {
 }
 
 impl Universe {
+    /// Creates a new `Universe` from a vector of particles.
+    ///
+    /// # Parameters
+    /// - `particles`: The particles to include in the universe.
+    ///
+    /// # Returns
+    /// A new `Universe` containing the given particles.
     #[must_use]
     pub const fn new(particles: Vec<Particle>) -> Self {
         Self { particles }
     }
 
+    /// Generates a universe of `n` particles distributed in 3D space according to a Gaussian
+    /// (normal) distribution.
+    ///
+    /// Each particle's position is sampled independently for each axis using the provided mean `mu`
+    /// and standard deviation `sigma`. Optionally, a random seed can be provided for
+    /// reproducibility.
+    ///
+    /// # Parameters
+    /// - `n`: Number of particles to generate.
+    /// - `mu`: Mean position for the Gaussian distribution (per axis).
+    /// - `sigma`: Standard deviation for the Gaussian distribution (per axis).
+    /// - `seed`: Optional random seed for reproducibility.
+    ///
+    /// # Returns
+    /// A new `Universe` containing the generated particles.
+    ///
+    /// # Panics
+    /// Panics if the random distribution can't be generated. This is prevented by the function
+    /// logic and should not happen.
     #[must_use]
-    #[allow(clippy::missing_panics_doc)]
     pub fn gaussian_nebula(
         n: usize,
         mu: SVector<f32, 3>,
@@ -48,6 +99,10 @@ impl Universe {
         Self::new(particles)
     }
 
+    /// Computes the center of mass of all particles in the universe.
+    ///
+    /// # Returns
+    /// The average position of all particles as a 3D vector.
     #[must_use]
     pub fn center_of_mass(&self) -> SVector<f32, 3> {
         #[allow(clippy::cast_precision_loss)]
@@ -56,6 +111,12 @@ impl Universe {
         position_sum / n
     }
 
+    /// Returns a new universe with the center of mass shifted to the origin.
+    ///
+    /// This subtracts the center of mass from every particle's position.
+    ///
+    /// # Returns
+    /// A new `Universe` with zeroed center of mass.
     #[must_use]
     pub fn zero_center_of_mass(mut self) -> Self {
         let n = self.particles.len();
@@ -68,11 +129,21 @@ impl Universe {
         self
     }
 
+    /// Computes the total velocity (vector sum) of all particles in the universe.
+    ///
+    /// # Returns
+    /// The sum of all particle velocities as a 3D vector.
     #[must_use]
     pub fn total_velocity(&self) -> SVector<f32, 3> {
         self.particles.iter().map(|p| p.vel).sum()
     }
 
+    /// Returns a new universe with the total velocity set to zero.
+    ///
+    /// This subtracts the average velocity from every particle.
+    ///
+    /// # Returns
+    /// A new `Universe` with zero total velocity.
     #[must_use]
     pub fn zero_total_velocity(mut self) -> Self {
         let n = self.particles.len();
@@ -88,8 +159,23 @@ impl Universe {
         self
     }
 
+    /// Adds a random velocity to each particle, sampled from a Gaussian distribution.
+    ///
+    /// Each velocity component is sampled independently using the provided mean `mu` and standard
+    /// deviation `sigma`. Optionally, a random seed can be provided for reproducibility.
+    ///
+    /// # Parameters
+    /// - `mu`: Mean velocity for the Gaussian distribution (per axis).
+    /// - `sigma`: Standard deviation for the Gaussian distribution (per axis).
+    /// - `seed`: Optional random seed for reproducibility.
+    ///
+    /// # Returns
+    /// The updated `Universe` with modified particle velocities.
+    ///
+    /// # Panics
+    /// Panics if the random distribution can't be generated. This is prevented by the function
+    /// logic and should not happen.
     #[must_use]
-    #[allow(clippy::missing_panics_doc)]
     pub fn set_random_velocity(
         mut self,
         mu: SVector<f32, 3>,
@@ -115,6 +201,15 @@ impl Universe {
         self
     }
 
+    /// Computes the angular momentum of a single particle in the xy plane, relative to a given
+    /// center of mass.
+    ///
+    /// # Parameters
+    /// - `particle`: The particle whose angular momentum is computed.
+    /// - `com`: The center of mass to use as the origin.
+    ///
+    /// # Returns
+    /// The angular momentum of the particle in the xy plane.
     fn angular_momentum_particle_xy(particle: &Particle, com: SVector<f32, 3>) -> f32 {
         let pos = particle.pos - com;
         #[allow(clippy::suboptimal_flops)]
@@ -126,7 +221,6 @@ impl Universe {
     /// Returns the total angular momentum of the universe in the xy plane.
     ///
     /// # Returns
-    ///
     /// Total angular momentum in the xy plane of the universe.
     #[must_use]
     pub fn total_angular_momentum_xy(&self) -> f32 {
@@ -140,15 +234,12 @@ impl Universe {
     /// Sets a uniform angular velocity in the xy plane for all particles.
     ///
     /// # Arguments
-    ///
     /// * `period` - The desired rotation period in simulation time.
     ///
     /// # Returns
-    ///
     /// The updated system with modified particle velocities.
     ///
     /// # Note
-    ///
     /// This method does not account for center-of-mass offset or pre-existing
     /// angular momentum. It assumes the origin is the center of rotation and
     /// adds the rotational component to the current velocities.
@@ -164,6 +255,10 @@ impl Universe {
         self
     }
 
+    /// Advances the simulation by one step using direct pairwise force computation (O(N²)).
+    ///
+    /// This method resets all forces, computes gravitational forces between all unique pairs of
+    /// particles, and then updates velocities and positions accordingly.
     pub fn step_direct(&mut self) {
         // reset forces
         for particle in &mut self.particles {
@@ -198,6 +293,10 @@ impl Universe {
         }
     }
 
+    /// Advances the simulation by one step using the Barnes-Hut approximation (O(N log N)).
+    ///
+    /// This method builds a Barnes-Hut octree, computes approximate gravitational forces for each
+    /// particle, and then updates velocities and positions accordingly.
     pub fn step(&mut self) {
         // reset forces
         for particle in &mut self.particles {
