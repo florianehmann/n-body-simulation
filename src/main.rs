@@ -12,22 +12,18 @@ use macroquad::prelude::*;
 use n_body_simulation::sim::universe::Universe;
 use nalgebra::vector;
 
-const MAX_ACCUMULATOR_TIME: f32 = 0.1;
-
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
-    // Milky Way
-    // let universe =
-    //     Universe::gaussian_nebula(5000, vector![0.0, 0.0, 0.0], vector![13.4, 13.4, 1.3], None)
-    //         .zero_center_of_mass()
-    //         .set_random_velocity(vector![0.0, 0.0, 0.0], vector![0.02, 0.02, 0.002], None)
-    //         .zero_total_velocity()
-    //         .set_rotation_period(10000.0);
-    let universe =
-        Universe::gaussian_nebula(2000, vector![0.0, 0.0, 0.0], vector![10.0, 10.0, 1.0], None)
-            .zero_center_of_mass()
-            .zero_total_velocity()
-            .set_rotation_period(1000.0);
+    let universe = Universe::gaussian_nebula(
+        10_000,
+        vector![0.0, 0.0, 0.0],
+        vector![13.4, 13.4, 1.3],
+        None,
+    )
+    .zero_center_of_mass()
+    .set_random_velocity(vector![0.0, 0.0, 0.0], vector![0.02, 0.02, 0.002], None)
+    .zero_total_velocity()
+    .set_rotation_period(5000.0);
     let render_buffer = Arc::new(Mutex::new(universe));
     let sim_render_buffer = Arc::clone(&render_buffer);
     thread::spawn(move || {
@@ -36,26 +32,12 @@ async fn main() {
             .expect("If this fails program is dead anyway")
             .clone();
 
-        let target_sim_steps_per_second = 60.0;
+        let target_sim_steps_per_second = 100.0;
         let dt = 1.0 / target_sim_steps_per_second;
         let dt_duration = Duration::from_secs_f32(dt);
-        let mut last_update = Instant::now();
-        let mut accumulator = 0.0;
         loop {
             let loop_start = Instant::now();
-
-            let now = Instant::now();
-            let elapsed = now.duration_since(last_update).as_secs_f32();
-            last_update = now;
-            accumulator += elapsed;
-            accumulator = accumulator.min(MAX_ACCUMULATOR_TIME);
-
-            // catch up to match target simulation speed
-            #[allow(clippy::while_float)]
-            while accumulator >= dt {
-                sim_universe.step();
-                accumulator -= dt;
-            }
+            sim_universe.step();
 
             // copy new frame to render buffer
             if let Ok(mut render_target) = sim_render_buffer.lock() {
@@ -140,7 +122,7 @@ fn zoom_and_pan(camera: &mut Camera2D, zoom_factor: &mut f32) {
 
 fn draw_universe(universe: &Universe) {
     let r = 0.1;
-    for i in 0..universe.x.len() {
-        draw_circle(universe.x[i], universe.y[i], r, WHITE);
+    for particle in &universe.particles {
+        draw_circle(particle.pos[0], particle.pos[1], r, WHITE);
     }
 }

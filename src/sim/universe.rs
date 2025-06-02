@@ -1,23 +1,76 @@
+//! Universe abstraction for n-body simulations.
+//!
+//! This module defines the [`Universe`] struct, which manages a collection of particles and
+//! provides methods for initializing, analyzing, and evolving an n-body system under Newtonian
+//! gravity.
+//!
+//! # Features
+//! - Construction of universes from custom or randomly generated particle distributions
+//! - Utilities for centering, velocity normalization, and angular momentum control
+//! - Direct O(N²) and Barnes-Hut O(N log N) simulation steps
+//! - Methods for computing physical properties such as center of mass and angular momentum
+//!
+//! # Example
+//! ```rust
+//! use n_body_simulation::sim::universe::Universe;
+//! use nalgebra::vector;
+//!
+//! // Create a universe with 100 particles in a Gaussian nebula
+//! let universe = Universe::gaussian_nebula(
+//!     100,
+//!     vector![0.0, 0.0, 0.0],
+//!     vector![1.0, 1.0, 1.0], None
+//! );
+//! ```
+//!
+
 use nalgebra::{SVector, vector};
 use rand::SeedableRng;
 use rand_distr::{Distribution, Normal};
 
+use crate::sim::barnes_hut::OctreeNode;
+use crate::sim::particle::Particle;
+
+use super::barnes_hut::SubtreeAggregate;
+
 #[derive(Clone)]
 pub struct Universe {
-    pub x: Vec<f32>,
-    pub y: Vec<f32>,
-    pub z: Vec<f32>,
-    pub vx: Vec<f32>,
-    pub vy: Vec<f32>,
-    pub vz: Vec<f32>,
-    pub fx: Vec<f32>,
-    pub fy: Vec<f32>,
-    pub fz: Vec<f32>,
+    pub particles: Vec<Particle>,
 }
 
 impl Universe {
+    /// Creates a new `Universe` from a vector of particles.
+    ///
+    /// # Parameters
+    /// - `particles`: The particles to include in the universe.
+    ///
+    /// # Returns
+    /// A new `Universe` containing the given particles.
     #[must_use]
-    #[allow(clippy::missing_panics_doc)]
+    pub const fn new(particles: Vec<Particle>) -> Self {
+        Self { particles }
+    }
+
+    /// Generates a universe of `n` particles distributed in 3D space according to a Gaussian
+    /// (normal) distribution.
+    ///
+    /// Each particle's position is sampled independently for each axis using the provided mean `mu`
+    /// and standard deviation `sigma`. Optionally, a random seed can be provided for
+    /// reproducibility.
+    ///
+    /// # Parameters
+    /// - `n`: Number of particles to generate.
+    /// - `mu`: Mean position for the Gaussian distribution (per axis).
+    /// - `sigma`: Standard deviation for the Gaussian distribution (per axis).
+    /// - `seed`: Optional random seed for reproducibility.
+    ///
+    /// # Returns
+    /// A new `Universe` containing the generated particles.
+    ///
+    /// # Panics
+    /// Panics if the random distribution can't be generated. This is prevented by the function
+    /// logic and should not happen.
+    #[must_use]
     pub fn gaussian_nebula(
         n: usize,
         mu: SVector<f32, 3>,
@@ -33,84 +86,96 @@ impl Universe {
         let normal = Normal::new(0.0, 1.0).expect("Sigma is hard-coded to be finite");
         let mut sample = SVector::<f32, 3>::zeros();
 
-        let vx = vec![0.0; n];
-        let vy = vec![0.0; n];
-        let vz = vec![0.0; n];
-        let fx = vec![0.0; n];
-        let fy = vec![0.0; n];
-        let fz = vec![0.0; n];
-        let mut x = Vec::with_capacity(n);
-        let mut y = Vec::with_capacity(n);
-        let mut z = Vec::with_capacity(n);
-        for _ in 0..n {
-            for i in 0..3 {
-                sample[i] = normal.sample(&mut rng);
-            }
-            let pos = mu + sigma.component_mul(&sample);
-            x.push(pos[0]);
-            y.push(pos[1]);
-            z.push(pos[2]);
-        }
+        let particles = (0..n)
+            .map(|_| {
+                for i in 0..3 {
+                    sample[i] = normal.sample(&mut rng);
+                }
+                mu + sigma.component_mul(&sample)
+            })
+            .map(|pos| Particle::new(pos, None))
+            .collect();
 
-        Self {
-            x,
-            y,
-            z,
-            vx,
-            vy,
-            vz,
-            fx,
-            fy,
-            fz,
-        }
+        Self::new(particles)
     }
 
+    /// Computes the center of mass of all particles in the universe.
+    ///
+    /// # Returns
+    /// The average position of all particles as a 3D vector.
     #[must_use]
     pub fn center_of_mass(&self) -> SVector<f32, 3> {
         #[allow(clippy::cast_precision_loss)]
-        let n = self.x.len() as f32;
-        SVector::<f32, 3>::new(
-            self.x.iter().sum::<f32>() / n,
-            self.y.iter().sum::<f32>() / n,
-            self.z.iter().sum::<f32>() / n,
-        )
+        let n = self.particles.len() as f32;
+        let position_sum: SVector<f32, 3> = self.particles.iter().map(|p| p.pos).sum();
+        position_sum / n
     }
 
+    /// Returns a new universe with the center of mass shifted to the origin.
+    ///
+    /// This subtracts the center of mass from every particle's position.
+    ///
+    /// # Returns
+    /// A new `Universe` with zeroed center of mass.
     #[must_use]
     pub fn zero_center_of_mass(mut self) -> Self {
-        let com = self.center_of_mass();
-        for i in 0..self.x.len() {
-            self.x[i] -= com[0];
-            self.y[i] -= com[1];
-            self.z[i] -= com[2];
+        let n = self.particles.len();
+        if n == 0 {
+            return self;
         }
+
+        let com = self.center_of_mass();
+        self.particles.iter_mut().for_each(|p| p.pos -= com);
         self
     }
 
+    /// Computes the total velocity (vector sum) of all particles in the universe.
+    ///
+    /// # Returns
+    /// The sum of all particle velocities as a 3D vector.
     #[must_use]
     pub fn total_velocity(&self) -> SVector<f32, 3> {
-        #[allow(clippy::cast_precision_loss)]
-        let n = self.x.len() as f32;
-        SVector::<f32, 3>::new(
-            self.vx.iter().sum::<f32>() / n,
-            self.vy.iter().sum::<f32>() / n,
-            self.vz.iter().sum::<f32>() / n,
-        )
+        self.particles.iter().map(|p| p.vel).sum()
     }
 
+    /// Returns a new universe with the total velocity set to zero.
+    ///
+    /// This subtracts the average velocity from every particle.
+    ///
+    /// # Returns
+    /// A new `Universe` with zero total velocity.
     #[must_use]
     pub fn zero_total_velocity(mut self) -> Self {
-        let total_vel = self.total_velocity();
-        for i in 0..self.x.len() {
-            self.vx[i] -= total_vel[0];
-            self.vy[i] -= total_vel[1];
-            self.vz[i] -= total_vel[2];
+        let n = self.particles.len();
+        if n == 0 {
+            return self;
         }
+
+        let total_vel = self.total_velocity();
+        #[allow(clippy::cast_precision_loss)]
+        self.particles
+            .iter_mut()
+            .for_each(|p| p.vel -= total_vel / (n as f32));
         self
     }
 
+    /// Adds a random velocity to each particle, sampled from a Gaussian distribution.
+    ///
+    /// Each velocity component is sampled independently using the provided mean `mu` and standard
+    /// deviation `sigma`. Optionally, a random seed can be provided for reproducibility.
+    ///
+    /// # Parameters
+    /// - `mu`: Mean velocity for the Gaussian distribution (per axis).
+    /// - `sigma`: Standard deviation for the Gaussian distribution (per axis).
+    /// - `seed`: Optional random seed for reproducibility.
+    ///
+    /// # Returns
+    /// The updated `Universe` with modified particle velocities.
+    ///
+    /// # Panics
+    /// Panics if the random distribution can't be generated. This is prevented by the function
+    /// logic and should not happen.
     #[must_use]
-    #[allow(clippy::missing_panics_doc)]
     pub fn set_random_velocity(
         mut self,
         mu: SVector<f32, 3>,
@@ -125,111 +190,143 @@ impl Universe {
 
         let normal = Normal::new(0.0, 1.0).expect("Sigma is hard-coded to be finite");
         let mut sample = SVector::<f32, 3>::zeros();
-        for i in 0..self.x.len() {
-            for j in 0..3 {
-                sample[j] = normal.sample(&mut rng);
+        self.particles.iter_mut().for_each(|p| {
+            for i in 0..3 {
+                sample[i] = normal.sample(&mut rng);
             }
             let dv = mu + sigma.component_mul(&sample);
-            self.vx[i] += dv[0];
-            self.vy[i] += dv[1];
-            self.vz[i] += dv[2];
-        }
+            p.vel += dv;
+        });
+
         self
     }
 
-    #[allow(clippy::suboptimal_flops)]
-    fn angular_momentum_particle_xy(&self, particle_index: usize, com: SVector<f32, 3>) -> f32 {
-        let particle_pos = vector![self.x[particle_index], self.y[particle_index], 0.0];
-        let particle_vel = vector![self.vx[particle_index], self.vy[particle_index], 0.0];
-        let pos = particle_pos - com;
-        pos[0] * particle_vel[1] - pos[1] * particle_vel[0]
+    /// Computes the angular momentum of a single particle in the xy plane, relative to a given
+    /// center of mass.
+    ///
+    /// # Parameters
+    /// - `particle`: The particle whose angular momentum is computed.
+    /// - `com`: The center of mass to use as the origin.
+    ///
+    /// # Returns
+    /// The angular momentum of the particle in the xy plane.
+    fn angular_momentum_particle_xy(particle: &Particle, com: SVector<f32, 3>) -> f32 {
+        let pos = particle.pos - com;
+        #[allow(clippy::suboptimal_flops)]
+        {
+            pos[0] * particle.vel[1] - pos[1] * particle.vel[0]
+        }
     }
 
     /// Returns the total angular momentum of the universe in the xy plane.
     ///
     /// # Returns
-    ///
     /// Total angular momentum in the xy plane of the universe.
     #[must_use]
     pub fn total_angular_momentum_xy(&self) -> f32 {
         let com = self.center_of_mass();
-        let mut total_angular_momentum = 0.0;
-        for i in 0..self.x.len() {
-            total_angular_momentum += self.angular_momentum_particle_xy(i, com);
-        }
-        total_angular_momentum
+        self.particles
+            .iter()
+            .map(|p| Self::angular_momentum_particle_xy(p, com))
+            .sum::<f32>()
     }
 
     /// Sets a uniform angular velocity in the xy plane for all particles.
     ///
     /// # Arguments
-    ///
     /// * `period` - The desired rotation period in simulation time.
     ///
     /// # Returns
-    ///
     /// The updated system with modified particle velocities.
     ///
     /// # Note
-    ///
     /// This method does not account for center-of-mass offset or pre-existing
     /// angular momentum. It assumes the origin is the center of rotation and
     /// adds the rotational component to the current velocities.
     #[must_use]
     pub fn set_rotation_period(mut self, period: f32) -> Self {
         let target_angular_velocity = 2.0 * std::f32::consts::PI / period;
-        for i in 0..self.x.len() {
-            self.vx[i] += -self.y[i] * target_angular_velocity;
-            self.vy[i] += self.x[i] * target_angular_velocity;
-        }
+        self.particles.iter_mut().for_each(|p| {
+            let vel = vector![-p.pos[1], p.pos[0]] * target_angular_velocity;
+            p.vel[0] += vel[0];
+            p.vel[1] += vel[1];
+        });
+
         self
     }
 
-    #[allow(clippy::similar_names)]
-    #[allow(clippy::suboptimal_flops)]
-    pub fn step(&mut self) {
+    /// Advances the simulation by one step using direct pairwise force computation (O(N²)).
+    ///
+    /// This method resets all forces, computes gravitational forces between all unique pairs of
+    /// particles, and then updates velocities and positions accordingly.
+    pub fn step_direct(&mut self) {
         // reset forces
-        for i in 0..self.x.len() {
-            self.fx[i] = 0.0;
-            self.fy[i] = 0.0;
-            self.fz[i] = 0.0;
+        for particle in &mut self.particles {
+            particle.force *= 0.0;
         }
 
         // accumulate forces
-        for i in 0..self.x.len() {
-            for j in i + 1..self.x.len() {
-                let dx = self.x[j] - self.x[i];
-                let dy = self.y[j] - self.y[i];
-                let dz = self.z[j] - self.z[i];
+        for i in 0..self.particles.len() {
+            for j in i + 1..self.particles.len() {
+                let (left, right) = self.particles.split_at_mut(j);
+                let particle1 = &mut left[i];
+                let particle2 = &mut right[0];
 
-                let r_squared = dx * dx + dy * dy + dz * dz;
+                let r_vec = particle2.pos - particle1.pos;
+
+                let r_squared = r_vec.norm_squared();
                 let softened = r_squared + 0.01; // (r^2 + epsilon^2)
                 let inv_r = 1.0 / softened.sqrt();
 
-                let f12 = 1.0e-4 * inv_r.powi(3);
-                let fx = f12 * dx;
-                let fy = f12 * dy;
-                let fz = f12 * dz;
+                let f12 = 1.0e-4 * inv_r * inv_r;
+                let f12_vec = f12 * r_vec * inv_r;
 
-                self.fx[i] += fx;
-                self.fy[i] += fy;
-                self.fz[i] += fz;
-
-                self.fx[j] -= fx;
-                self.fy[j] -= fy;
-                self.fz[j] -= fz;
+                particle1.force += f12_vec;
+                particle2.force -= f12_vec;
             }
         }
 
         // update velocities and positions
-        for i in 0..self.x.len() {
-            self.vx[i] += self.fx[i];
-            self.vy[i] += self.fy[i];
-            self.vz[i] += self.fz[i];
+        for particle in &mut self.particles {
+            particle.vel += particle.force;
+            particle.pos += particle.vel;
+        }
+    }
 
-            self.x[i] += self.vx[i];
-            self.y[i] += self.vy[i];
-            self.z[i] += self.vz[i];
+    /// Advances the simulation by one step using the Barnes-Hut approximation (O(N log N)).
+    ///
+    /// This method builds a Barnes-Hut octree, computes approximate gravitational forces for each
+    /// particle, and then updates velocities and positions accordingly.
+    pub fn step(&mut self) {
+        // reset forces
+        for particle in &mut self.particles {
+            particle.force *= 0.0;
+        }
+
+        // determine Barnes-Hut octree
+        let tree = OctreeNode::from_particles(&self.particles);
+
+        // determine approximate forces
+        for particle in &mut self.particles {
+            let mut f = |agg: &SubtreeAggregate| {
+                let r_vec = agg.center_of_mass - particle.pos;
+
+                let r_squared = r_vec.norm_squared();
+                let softened = r_squared + 0.01; // (r^2 + epsilon^2)
+                let inv_r = 1.0 / softened.sqrt();
+
+                let f12 = 1.0e-4 * agg.total_mass * inv_r * inv_r;
+                let f12_vec = f12 * r_vec * inv_r;
+
+                particle.force += f12_vec;
+            };
+            tree.for_each_relevant_aggregate(particle.pos, 1.0, &mut f);
+        }
+
+        // update velocities and positions
+        for particle in &mut self.particles {
+            particle.vel += particle.force;
+            particle.pos += particle.vel;
         }
     }
 }
@@ -244,15 +341,10 @@ mod tests {
     #[test]
     fn test_center_of_mass() {
         let universe = Universe {
-            x: vec![-1.0, 2.0],
-            y: vec![-2.0, 4.0],
-            z: vec![0.0, 0.0],
-            vx: vec![0.0; 2],
-            vy: vec![0.0; 2],
-            vz: vec![0.0; 2],
-            fx: vec![0.0; 2],
-            fy: vec![0.0; 2],
-            fz: vec![0.0; 2],
+            particles: vec![
+                Particle::new(vector![-1.0, -2.0, 0.0], None),
+                Particle::new(vector![2.0, 4.0, 0.0], None),
+            ],
         };
         let com = universe.center_of_mass();
         assert_relative_eq!(com, vector![0.5, 1.0, 0.0]);
@@ -261,15 +353,10 @@ mod tests {
     #[test]
     fn test_zero_center_of_mass() {
         let universe = Universe {
-            x: vec![-1.0, 2.0],
-            y: vec![-2.0, 4.0],
-            z: vec![0.0, 0.0],
-            vx: vec![0.0; 2],
-            vy: vec![0.0; 2],
-            vz: vec![0.0; 2],
-            fx: vec![0.0; 2],
-            fy: vec![0.0; 2],
-            fz: vec![0.0; 2],
+            particles: vec![
+                Particle::new(vector![-1.0, -2.0, 0.0], None),
+                Particle::new(vector![2.0, 4.0, 0.0], None),
+            ],
         };
         let zeroed_universe = universe.zero_center_of_mass();
         let com = zeroed_universe.center_of_mass();
@@ -279,9 +366,9 @@ mod tests {
     #[test]
     fn test_gaussian_nebula_particle_count() {
         let mu = vector![0.0, 0.0, 0.0];
-        let sigma = vector![1.0, 1.0, 1.0];
+        let sigma = vector![1.0, 1.0, 0.0];
         let n = 100;
         let universe = Universe::gaussian_nebula(n, mu, sigma, None);
-        assert_eq!(universe.x.len(), n);
+        assert_eq!(universe.particles.len(), n);
     }
 }
