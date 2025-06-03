@@ -26,6 +26,8 @@ async fn main() {
     .set_rotation_period(5000.0);
     let render_buffer = Arc::new(Mutex::new(universe));
     let sim_render_buffer = Arc::clone(&render_buffer);
+    let updates_per_second = Arc::new(Mutex::new(0.0));
+    let ups_sensor = Arc::clone(&updates_per_second);
     thread::spawn(move || {
         let mut sim_universe = sim_render_buffer
             .lock()
@@ -45,6 +47,9 @@ async fn main() {
             }
 
             let elapsed_loop = loop_start.elapsed();
+            if let Ok(mut sps) = ups_sensor.lock() {
+                *sps = 1.0 / elapsed_loop.as_secs_f32();
+            }
             if elapsed_loop < dt_duration {
                 thread::sleep(dt_duration - elapsed_loop);
             }
@@ -60,6 +65,15 @@ async fn main() {
     let mut first_frame = true;
     let mut waited = false;
 
+    let mut ups = {
+        let guard = updates_per_second
+            .lock()
+            .expect("If sim thread panicked, there's nothing we can do anyway");
+        *guard
+    };
+    let mut fps = 0.0;
+
+    #[allow(clippy::suboptimal_flops, clippy::cast_precision_loss)]
     loop {
         clear_background(BLACK);
 
@@ -85,7 +99,17 @@ async fn main() {
         set_default_camera();
 
         // draw UI elements here
-        draw_fps();
+        let ups_new = {
+            let guard = updates_per_second
+                .lock()
+                .expect("If sim thread panicked, there's nothing we can do anyway");
+            *guard
+        };
+        ups = ups * 0.95 + ups_new * 0.05;
+        let fps_new = get_fps() as f32;
+        fps = fps * 0.95 + fps_new * 0.05;
+        let status_text = format!("FPS: {fps:.1} / UPS: {ups:.1}");
+        draw_text(status_text.as_str(), 20.0, 20.0, 30.0, WHITE);
 
         next_frame().await;
     }
