@@ -21,7 +21,7 @@
 //! # Example
 //! ```rust
 //! use n_body_simulation::sim::barnes_hut::OctreeNode;
-//! use n_body_simulation::sim::particle::Particle;
+//! use n_body_simulation::sim::Particle;
 //! use nalgebra::vector;
 //!
 //! let particles = vec![Particle::new(vector![0.0, 0.0, 0.0], None)];
@@ -30,7 +30,7 @@
 
 use nalgebra::{SVector, vector};
 
-use super::particle::Particle;
+use super::Particle;
 
 pub struct SubtreeAggregate {
     pub center_of_mass: SVector<f32, 3>,

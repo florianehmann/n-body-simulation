@@ -1,9 +1,5 @@
 //! Universe abstraction for n-body simulations.
 //!
-//! This module defines the [`Universe`] struct, which manages a collection of particles and
-//! provides methods for initializing, analyzing, and evolving an n-body system under Newtonian
-//! gravity.
-//!
 //! # Features
 //! - Construction of universes from custom or randomly generated particle distributions
 //! - Utilities for centering, velocity normalization, and angular momentum control
@@ -12,7 +8,7 @@
 //!
 //! # Example
 //! ```rust
-//! use n_body_simulation::sim::universe::Universe;
+//! use n_body_simulation::sim::Universe;
 //! use nalgebra::vector;
 //!
 //! // Create a universe with 100 particles in a Gaussian nebula
@@ -28,11 +24,66 @@ use nalgebra::{SVector, vector};
 use rand::SeedableRng;
 use rand_distr::{Distribution, Normal};
 
-use crate::sim::barnes_hut::OctreeNode;
-use crate::sim::particle::Particle;
+use super::barnes_hut::{OctreeNode, SubtreeAggregate};
 
-use super::barnes_hut::SubtreeAggregate;
+/// Represents a single particle in the n-body simulation.
+///
+/// Each particle has a position, velocity, and force vector in 3D space.
+#[derive(Clone, Debug)]
+pub struct Particle {
+    /// Position vector (x, y, z) of the particle.
+    pub pos: SVector<f32, 3>,
+    /// Velocity vector (vx, vy, vz) of the particle.
+    pub vel: SVector<f32, 3>,
+    /// Accumulated force vector (fx, fy, fz) acting on the particle.
+    pub force: SVector<f32, 3>,
+}
 
+impl Particle {
+    /// Creates a new `Particle` with the given position and optional velocity.
+    ///
+    /// If `vel` is `None`, the velocity is initialized to zero.
+    ///
+    /// # Parameters
+    /// - `pos`: The initial position of the particle.
+    /// - `vel`: Optional initial velocity of the particle.
+    ///
+    /// # Returns
+    /// A new `Particle` instance.
+    pub fn new(pos: SVector<f32, 3>, vel: Option<SVector<f32, 3>>) -> Self {
+        Self {
+            pos,
+            vel: vel.unwrap_or_else(SVector::<f32, 3>::zeros),
+            ..Default::default()
+        }
+    }
+
+    /// Computes the vector from this particle to another particle.
+    ///
+    /// # Parameters
+    /// - `other`: The other particle.
+    ///
+    /// # Returns
+    /// The vector pointing from `self` to `other`.
+    #[must_use]
+    pub fn vector_to(&self, other: &Self) -> SVector<f32, 3> {
+        other.pos - self.pos
+    }
+}
+
+impl Default for Particle {
+    /// Returns a particle at the origin with zero velocity and zero force.
+    fn default() -> Self {
+        Self {
+            pos: SVector::<f32, 3>::zeros(),
+            vel: SVector::<f32, 3>::zeros(),
+            force: SVector::<f32, 3>::zeros(),
+        }
+    }
+}
+
+/// Manages a collection of particles and provides methods for initializing and analyzing an n-body
+/// system.
 #[derive(Clone)]
 pub struct Universe {
     pub particles: Vec<Particle>,
@@ -253,44 +304,6 @@ impl Universe {
         });
 
         self
-    }
-
-    /// Advances the simulation by one step using direct pairwise force computation (O(N²)).
-    ///
-    /// This method resets all forces, computes gravitational forces between all unique pairs of
-    /// particles, and then updates velocities and positions accordingly.
-    pub fn step_direct(&mut self) {
-        // reset forces
-        for particle in &mut self.particles {
-            particle.force *= 0.0;
-        }
-
-        // accumulate forces
-        for i in 0..self.particles.len() {
-            for j in i + 1..self.particles.len() {
-                let (left, right) = self.particles.split_at_mut(j);
-                let particle1 = &mut left[i];
-                let particle2 = &mut right[0];
-
-                let r_vec = particle2.pos - particle1.pos;
-
-                let r_squared = r_vec.norm_squared();
-                let softened = r_squared + 0.01; // (r^2 + epsilon^2)
-                let inv_r = 1.0 / softened.sqrt();
-
-                let f12 = 1.0e-4 * inv_r * inv_r;
-                let f12_vec = f12 * r_vec * inv_r;
-
-                particle1.force += f12_vec;
-                particle2.force -= f12_vec;
-            }
-        }
-
-        // update velocities and positions
-        for particle in &mut self.particles {
-            particle.vel += particle.force;
-            particle.pos += particle.vel;
-        }
     }
 
     /// Advances the simulation by one step using the Barnes-Hut approximation (O(N log N)).

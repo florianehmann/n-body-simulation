@@ -9,13 +9,16 @@ use std::{
 };
 
 use macroquad::prelude::*;
-use n_body_simulation::sim::universe::Universe;
+use n_body_simulation::sim::{
+    ForceModel, Integrator, direct_force_model::DirectForceModel,
+    euler_integrator::EulerIntegrator, universe::Universe,
+};
 use nalgebra::vector;
 
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
     let universe = Universe::gaussian_nebula(
-        10_000,
+        1_000,
         vector![0.0, 0.0, 0.0],
         vector![13.4, 13.4, 1.3],
         None,
@@ -24,6 +27,10 @@ async fn main() {
     .set_random_velocity(vector![0.0, 0.0, 0.0], vector![0.02, 0.02, 0.002], None)
     .zero_total_velocity()
     .set_rotation_period(5000.0);
+
+    let mut force_model = DirectForceModel {};
+    let mut integrator = EulerIntegrator { dt: 1.0 };
+
     let render_buffer = Arc::new(Mutex::new(universe));
     let sim_render_buffer = Arc::clone(&render_buffer);
     let updates_per_second = Arc::new(Mutex::new(0.0));
@@ -39,7 +46,8 @@ async fn main() {
         let dt_duration = Duration::from_secs_f32(dt);
         loop {
             let loop_start = Instant::now();
-            sim_universe.step();
+            force_model.compute_forces(&mut sim_universe);
+            integrator.step(&mut sim_universe);
 
             // copy new frame to render buffer
             if let Ok(mut render_target) = sim_render_buffer.lock() {
@@ -47,8 +55,8 @@ async fn main() {
             }
 
             let elapsed_loop = loop_start.elapsed();
-            if let Ok(mut sps) = ups_sensor.lock() {
-                *sps = 1.0 / elapsed_loop.as_secs_f32();
+            if let Ok(mut ups) = ups_sensor.lock() {
+                *ups = 1.0 / elapsed_loop.as_secs_f32();
             }
             if elapsed_loop < dt_duration {
                 thread::sleep(dt_duration - elapsed_loop);
