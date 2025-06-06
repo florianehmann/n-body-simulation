@@ -5,6 +5,7 @@
 //! and the universe abstraction for managing collections of particles and advancing the simulation.
 
 pub mod barnes_hut;
+pub mod barnes_hut_force_model;
 pub mod direct_force_model;
 pub mod euler_integrator;
 pub mod force_model;

@@ -3,7 +3,7 @@ use crate::sim::{ForceModel, Universe};
 /// Calculates particle forces through direct pairwise force computation (O(N²)).
 ///
 /// This method resets all forces, computes gravitational forces between all unique pairs of
-/// particles, and then updates velocities and positions accordingly.
+/// particles.
 pub struct DirectForceModel {}
 
 impl ForceModel for DirectForceModel {

@@ -10,7 +10,7 @@ use std::{
 
 use macroquad::prelude::*;
 use n_body_simulation::sim::{
-    ForceModel, Integrator, direct_force_model::DirectForceModel,
+    ForceModel, Integrator, barnes_hut_force_model::BarnesHutForceModel,
     euler_integrator::EulerIntegrator, universe::Universe,
 };
 use nalgebra::vector;
@@ -18,7 +18,7 @@ use nalgebra::vector;
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
     let universe = Universe::gaussian_nebula(
-        1_000,
+        10_000,
         vector![0.0, 0.0, 0.0],
         vector![13.4, 13.4, 1.3],
         None,
@@ -28,7 +28,7 @@ async fn main() {
     .zero_total_velocity()
     .set_rotation_period(5000.0);
 
-    let mut force_model = DirectForceModel {};
+    let mut force_model = BarnesHutForceModel {};
     let mut integrator = EulerIntegrator { dt: 1.0 };
 
     let render_buffer = Arc::new(Mutex::new(universe));
