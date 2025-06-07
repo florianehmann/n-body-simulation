@@ -1,6 +1,6 @@
 use crate::sim::{
     ForceModel, Universe,
-    barnes_hut::{OctreeNode, SubtreeAggregate},
+    barnes_hut::{Octree, SubtreeAggregate},
 };
 
 /// Calculates particle forces through the Barnes-Hut approximation (O(N log N)).
@@ -16,7 +16,7 @@ impl ForceModel for BarnesHutForceModel {
         }
 
         // determine Barnes-Hut octree
-        let tree = OctreeNode::from_particles(&universe.particles);
+        let tree = Octree::from_particles(&universe.particles);
 
         // determine approximate forces
         for particle in &mut universe.particles {
