@@ -1,3 +1,4 @@
+use nalgebra::SVector;
 use rayon::prelude::*;
 
 use crate::sim::{
@@ -8,7 +9,24 @@ use crate::sim::{
 /// Calculates particle forces through the Barnes-Hut approximation (O(N log N)).
 ///
 /// This method resets all forces and computes gravitational forces on all particles.
-pub struct BarnesHutForceModel {}
+pub struct BarnesHutForceModel {
+    tree: Octree,
+}
+
+impl BarnesHutForceModel {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            tree: Octree::new(SVector::zeros(), 1.0),
+        }
+    }
+}
+
+impl Default for BarnesHutForceModel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ForceModel for BarnesHutForceModel {
     fn compute_forces(&mut self, universe: &mut Universe) {
@@ -18,7 +36,7 @@ impl ForceModel for BarnesHutForceModel {
         }
 
         // determine Barnes-Hut octree
-        let tree = Octree::from_particles(&universe.particles);
+        self.tree = Octree::from_particles(&universe.particles);
 
         // determine approximate forces
         universe.particles.par_iter_mut().for_each(|particle| {
@@ -34,7 +52,8 @@ impl ForceModel for BarnesHutForceModel {
 
                 particle.force += f12_vec;
             };
-            tree.for_each_relevant_aggregate(particle.pos, 1.0, &mut f);
+            self.tree
+                .for_each_relevant_aggregate(particle.pos, 1.0, &mut f);
         });
     }
 }

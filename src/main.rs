@@ -18,7 +18,7 @@ use nalgebra::vector;
 #[macroquad::main("N-Body Simulation")]
 async fn main() {
     let universe = Universe::gaussian_nebula(
-        10_000,
+        100_000,
         vector![0.0, 0.0, 0.0],
         vector![13.4, 13.4, 1.3],
         None,
@@ -28,7 +28,7 @@ async fn main() {
     .zero_total_velocity()
     .set_rotation_period(5000.0);
 
-    let mut force_model = BarnesHutForceModel {};
+    let mut force_model = BarnesHutForceModel::new();
     let mut integrator = EulerIntegrator { dt: 1.0 };
 
     let render_buffer = Arc::new(Mutex::new(universe));
@@ -113,9 +113,9 @@ async fn main() {
                 .expect("If sim thread panicked, there's nothing we can do anyway");
             *guard
         };
-        ups = ups * 0.95 + ups_new * 0.05;
+        ups = ups * 0.9 + ups_new * 0.1;
         let fps_new = get_fps() as f32;
-        fps = fps * 0.95 + fps_new * 0.05;
+        fps = fps * 0.9 + fps_new * 0.1;
         let status_text = format!("FPS: {fps:.1} / UPS: {ups:.1}");
         draw_text(status_text.as_str(), 20.0, 20.0, 30.0, WHITE);
 
