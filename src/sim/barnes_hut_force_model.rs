@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 use crate::sim::{
     ForceModel, Universe,
     barnes_hut::{Octree, SubtreeAggregate},
@@ -19,7 +21,7 @@ impl ForceModel for BarnesHutForceModel {
         let tree = Octree::from_particles(&universe.particles);
 
         // determine approximate forces
-        for particle in &mut universe.particles {
+        universe.particles.par_iter_mut().for_each(|particle| {
             let mut f = |agg: &SubtreeAggregate| {
                 let r_vec = agg.center_of_mass - particle.pos;
 
@@ -33,6 +35,6 @@ impl ForceModel for BarnesHutForceModel {
                 particle.force += f12_vec;
             };
             tree.for_each_relevant_aggregate(particle.pos, 1.0, &mut f);
-        }
+        });
     }
 }
